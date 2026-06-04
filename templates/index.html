@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Fire Robot Simulation</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
+    <style>
+        body { background-color: #333; display: flex; color: white; font-family: sans-serif; }
+        #simulation { text-align: center; }
+        canvas { background-color: #000; border: 2px solid white; }
+        /* --- Objective 4: Dashboard Styling --- */
+        #dashboard {
+            margin-left: 20px;
+            padding: 10px;
+            background-color: #222;
+            border-radius: 8px;
+            width: 300px;
+        }
+        #dashboard h2 { margin-top: 0; }
+        #dashboard p { font-size: 1.1em; }
+        #dashboard #alert { color: #FF9900; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div id="simulation">
+        <h1>Autonomous Fire Robot (Objectives 3 & 4)</h1>
+        <canvas id="simCanvas" width="500" height="500"></canvas>
+    </div>
+    
+    <div id="dashboard">
+        <h2>Dashboard</h2>
+        <p>Robot Status: <b id="status">Connecting...</b></p>
+        <p>A* Compute Time: <b id="compute-time">N/A</b></p>
+        <p>Path Length: <b id="path-length">N/A</b></p>
+        <hr>
+        <h3>Alerts</h3>
+        <p id="alert">All clear.</p>
+    </div>
+
+    <script>
+        // --- Setup ---
+        const canvas = document.getElementById('simCanvas');
+        const ctx = canvas.getContext('2d');
+        const TILE_SIZE = 50; // 500px / 10 tiles
+
+        // --- Dashboard Elements ---
+        const statusEl = document.getElementById('status');
+        const computeEl = document.getElementById('compute-time');
+        const pathEl = document.getElementById('path-length');
+        const alertEl = document.getElementById('alert');
+
+        // --- Simulation State ---
+        let simGrid = [];
+        let robot = { x: 0, y: 0 };
+        let fire = { x: 0, y: 0 };
+        let path = [];
+        let pathIndex = 0;
+        let animationFrame; // Holds the animation loop
+
+        // --- Connect to Socket.IO ---
+        const socket = io();
+
+        // --- Socket.IO Listeners ---
+
+        // 1. 'initial_state' - Received on first connection
+        socket.on('initial_state', (data) => {
+            console.log("Got initial state:", data);
+            simGrid = data.grid;
+            robot = data.robot;
+            fire = data.fire;
+            statusEl.innerText = "Requesting path...";
+            // Now that we have the state, request the first path
+            socket.emit('request_path', { robot_pos: robot, fire_pos: fire });
+        });
+
+        // 2. 'new_path' - Received after we request a path
+        socket.on('new_path', (data) => {
+            console.log("Got new path:", data);
+            path = data.path;
+            pathIndex = 0; // Reset path index
+            
+            // --- Update Dashboard ---
+            statusEl.innerText = "Moving to fire...";
+            computeEl.innerText = `${data.compute_time.toFixed(2)} ms`;
+            pathEl.innerText = `${data.path.length} steps`;
+            
+            // Start the animation loop (if not already running)
+            if (!animationFrame) {
+                gameLoop();
+            }
+        });
+        
+        // 3. 'fire_moved' - Received from server broadcast
+        socket.on('fire_moved', (data) => {
+            console.log("FIRE HAS MOVED!", data);
+            fire = data; // Update the fire's position
+            
+            // --- Update Dashboard ---
+            alertEl.innerText = `!! FIRE SPREAD to (${data.x}, ${data.y}) !!`;
+            statusEl.innerText = "Re-calculating path...";
+            
+            // Request a NEW path to the new fire location
+            socket.emit('request_path', { robot_pos: robot, fire_pos: fire });
+        });
+
+        // --- Animation Loop ---
+        function gameLoop() {
+            // This function runs ~1-2 times per second
+            updateState();
+            drawAll();
+            // We use setTimeout to control the speed
+            animationFrame = setTimeout(gameLoop, 500); // 500ms = 2 steps/sec
+        }
+
+        function updateState() {
+            if (pathIndex < path.length) {
+                // Get the next (x, y) step
+                const nextStep = path[pathIndex];
+                robot.x = nextStep[0];
+                robot.y = nextStep[1];
+                pathIndex++;
+            } else {
+                // We've reached the end
+                statusEl.innerText = "Reached the fire!";
+            }
+        }
+
+        // --- Drawing Function ---
+        function drawAll() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            // Draw grid and obstacles
+            if (simGrid.length === 0) return; // Don't draw if grid isn't loaded
+            
+            for (let y = 0; y < 10; y++) {
+                for (let x = 0; x < 10; x++) {
+                    if (simGrid[y][x] === 1) { ctx.strokeStyle = '#555'; } // Walkable
+                    else {
+                        ctx.fillStyle = '#888'; // Wall
+                        ctx.fillRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+                    }
+                    ctx.strokeRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+                }
+            }
+            
+            // Draw the path
+            ctx.fillStyle = 'rgba(0, 0, 255, 0.2)';
+            for (const step of path) {
+                ctx.fillRect(step[0] * TILE_SIZE, step[1] * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+            }
+
+            // Draw FIRE (with flicker effect)
+            let fireSize = TILE_SIZE * (0.8 + Math.random() * 0.2);
+            ctx.fillStyle = 'red';
+            ctx.fillRect(fire.x * TILE_SIZE + (TILE_SIZE - fireSize)/2, 
+                         fire.y * TILE_SIZE + (TILE_SIZE - fireSize)/2, 
+                         fireSize, fireSize);
+            
+            // Draw ROBOT
+            ctx.fillStyle = 'blue';
+            ctx.fillRect(robot.x * TILE_SIZE, robot.y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+        }
+        
+        // Draw the initial empty grid
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.font = "20px sans-serif";
+        ctx.fillStyle = "white";
+        ctx.textAlign = "center";
+        ctx.fillText("Connecting to server...", canvas.width/2, canvas.height/2);
+
+    </script>
+</body>
+</html>
