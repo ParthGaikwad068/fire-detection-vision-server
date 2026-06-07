@@ -17,6 +17,17 @@ Upon positive detection, the server acts as a dispatcher, broadcasting target co
 * **Computer Vision:** OpenCV (`opencv-python`), NumPy
 * **Networking:** Flask, Flask-SocketIO
 
+## Project Evolution
+This project was developed in three distinct engineering phases to systematically solve false-positive detections and integrate autonomous navigation:
+
+* **Stage 1: Kaggle Dataset & Bounding Boxes**
+  * Began by utilizing static training images from Kaggle to establish baseline bounding box mechanics and basic visual identification.
+* **Stage 2: HSV Filtering & False-Positive Rejection**
+  * Transitioned to live webcam feeds. Engineered a custom OpenCV pipeline using precise HSV masking to eliminate static bright lights and walls. 
+  * Implemented temporal persistence and pixel-fluctuation algorithms to successfully differentiate between chaotic fire and static red/orange clothing.
+* **Stage 3: A* Pathfinding Integration**
+  * Built a Flask/SocketIO web simulation. The vision server dynamically broadcasts fire coordinates to a simulated autonomous agent, which calculates the optimal, obstacle-free route using the A* pathfinding algorithm to "extinguish" the target.
+
 ## Installation
 This project uses a virtual environment to manage dependencies for clean, reproducible execution.
 
@@ -24,3 +35,11 @@ This project uses a virtual environment to manage dependencies for clean, reprod
    ```bash
    git clone [https://github.com/ParthGaikwad068/fire-detection-vision-server.git](https://github.com/ParthGaikwad068/fire-detection-vision-server.git)
    cd fire-detection-vision-server
+
+## Demonstration
+
+
+## Future Roadmap
+This project is under active development. Planned hardware and software integrations include:
+- [ ] **Depth Perception (Distance Mapping):** Implementing stereoscopic or monocular depth estimation to output the real-world distance (in meters) from the camera to the fire source.
+- [ ] **Hardware Deployment:** Transitioning the A* simulation agent into a physical, wheeled rover equipped with an extinguishing mechanism for real-world testing.
